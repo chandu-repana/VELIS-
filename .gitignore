@@ -3,16 +3,11 @@ __pycache__/
 *.py[cod]
 *.pyo
 *.pyd
-.Python
-*.egg-info/
-dist/
-build/
-.eggs/
 .venv/
 venv/
 env/
 
-# Environment variables - NEVER commit these
+# Environment variables
 .env
 *.env
 
@@ -20,32 +15,27 @@ env/
 node_modules/
 frontend/build/
 frontend/dist/
-.next/
 
-# Docker
+# Docker volumes
 docker/postgres-data/
 
-# IDE
-.vscode/settings.json
-.idea/
-*.swp
-*.swo
+# Logs
+*.log
+logs/
+
+# ML model weight files only - NOT the models/ Python package
+*.pt
+*.pth
+*.bin
+*.onnx
+
+# Upload temp files
+backend/uploads/
 
 # OS
 .DS_Store
 Thumbs.db
 desktop.ini
 
-# Logs
-*.log
-logs/
-
-# ML Models (too large for git)
-*.pt
-*.pth
-*.bin
-*.onnx
-models/
-
-# Upload temp files
-backend/uploads/
+# IDE
+.idea/
