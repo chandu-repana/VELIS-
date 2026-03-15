@@ -1,0 +1,51 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+.venv/
+venv/
+env/
+
+# Environment variables - NEVER commit these
+.env
+*.env
+
+# Node
+node_modules/
+frontend/build/
+frontend/dist/
+.next/
+
+# Docker
+docker/postgres-data/
+
+# IDE
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+logs/
+
+# ML Models (too large for git)
+*.pt
+*.pth
+*.bin
+*.onnx
+models/
+
+# Upload temp files
+backend/uploads/
