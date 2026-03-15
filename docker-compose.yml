@@ -1,0 +1,49 @@
+version: "3.9"
+
+services:
+
+  db:
+    image: postgres:15-alpine
+    container_name: velis_db
+    restart: always
+    environment:
+      POSTGRES_USER: velis_user
+      POSTGRES_PASSWORD: velis_password
+      POSTGRES_DB: velis_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U velis_user -d velis_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: velis_backend
+    restart: always
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://velis_user:velis_password@db:5432/velis_db
+      - SECRET_KEY=dev-secret-key-change-in-production
+      - JWT_SECRET_KEY=dev-jwt-secret-change-in-production
+      - JWT_ALGORITHM=HS256
+      - JWT_EXPIRE_MINUTES=60
+      - DEBUG=true
+      - FRONTEND_URL=http://localhost:3000
+      - WHISPER_MODEL=base
+    volumes:
+      - ./backend:/app
+      - uploads_data:/app/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  uploads_data:
