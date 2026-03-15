@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
+from app.api.routes import auth
 
 app = FastAPI(
     title=settings.APP_NAME,
@@ -10,7 +11,7 @@ app = FastAPI(
     redoc_url="/api/redoc",
 )
 
-# CORS middleware — allows React frontend to communicate with backend
+# CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[settings.FRONTEND_URL],
@@ -18,6 +19,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Register routers
+app.include_router(auth.router, prefix="/api/v1")
 
 
 @app.get("/", tags=["Health"])
