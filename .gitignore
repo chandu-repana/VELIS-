@@ -2,40 +2,38 @@
 __pycache__/
 *.py[cod]
 *.pyo
-*.pyd
 .venv/
 venv/
-env/
+*.egg-info/
+dist/
+build/
 
-# Environment variables
+# Environment
 .env
-*.env
+*.env.local
 
 # Node
 node_modules/
-frontend/build/
 frontend/dist/
+frontend/build/
+.next/
 
-# Docker volumes
-docker/postgres-data/
+# Docker
+docker/postgres/data/
 
-# Logs
-*.log
-logs/
-
-# ML model weight files only - NOT the models/ Python package
-*.pt
-*.pth
-*.bin
-*.onnx
-
-# Upload temp files
+# Audio/Upload files
 backend/uploads/
+backend/audio/
+
+# IDE
+.vscode/
+.idea/
+*.swp
 
 # OS
 .DS_Store
 Thumbs.db
-desktop.ini
 
-# IDE
-.idea/
+# Logs
+*.log
+logs/

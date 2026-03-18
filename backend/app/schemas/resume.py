@@ -1,26 +1,34 @@
-from pydantic import BaseModel
-from typing import Optional, List, Any
+﻿from pydantic import BaseModel
+from typing import List, Optional, Dict, Any
 from datetime import datetime
-from uuid import UUID
 
 
-class ResumeResponse(BaseModel):
-    id: UUID
-    user_id: UUID
+class ResumeUploadResponse(BaseModel):
+    id: int
     filename: str
-    file_size: Optional[int]
-    extracted_skills: Optional[List[str]]
-    experience_years: Optional[int]
-    is_parsed: str
+    file_type: str
+    is_parsed: bool
+    message: str
+
+
+class ResumeParseResponse(BaseModel):
+    id: int
+    filename: str
+    extracted_skills: List[str]
+    experience_years: int
+    education: List[Dict[str, str]]
+    is_parsed: bool
+
+
+class ResumeOut(BaseModel):
+    id: int
+    user_id: int
+    filename: str
+    file_type: str
+    extracted_skills: List[str]
+    experience_years: int
+    education: List[Dict[str, str]]
+    is_parsed: bool
     created_at: datetime
 
-    class Config:
-        from_attributes = True
-
-
-class ResumeSkillsResponse(BaseModel):
-    resume_id: UUID
-    skills: List[str]
-    experience_years: Optional[int]
-    education: Optional[Any]
-    work_experience: Optional[Any]
+    model_config = {"from_attributes": True}
