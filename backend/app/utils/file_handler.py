@@ -7,24 +7,19 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-ALLOWED_EXTENSIONS = {
-    "application/pdf": ".pdf",
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx"
+EXTENSION_TO_TYPE = {
+    ".pdf": "application/pdf",
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".doc": "application/msword",
+    ".txt": "text/plain",
+    ".rtf": "application/rtf",
+    ".odt": "application/vnd.oasis.opendocument.text",
 }
 
+ALLOWED_TYPES = set(EXTENSION_TO_TYPE.values())
 
-async def save_upload_file(file: UploadFile, subfolder: str = "resumes") -> str:
-    """
-    Save an uploaded file to disk and return the file path.
-    Generates a unique filename to avoid collisions.
-    """
-    if file.content_type not in ALLOWED_EXTENSIONS:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"File type not allowed. Allowed types: PDF, DOCX"
-        )
 
-    file_size = 0
+async def save_upload_file(file: UploadFile, subfolder: str = "resumes"):
     content = await file.read()
     file_size = len(content)
 
@@ -35,29 +30,35 @@ async def save_upload_file(file: UploadFile, subfolder: str = "resumes") -> str:
             detail=f"File too large. Maximum size: {settings.MAX_UPLOAD_SIZE_MB}MB"
         )
 
-    ext = ALLOWED_EXTENSIONS[file.content_type]
-    unique_filename = f"{uuid.uuid4().hex}{ext}"
+    filename_lower = (file.filename or "").lower()
+    detected_type = None
+    detected_ext = None
 
+    for ext, mime in EXTENSION_TO_TYPE.items():
+        if filename_lower.endswith(ext):
+            detected_type = mime
+            detected_ext = ext
+            break
+
+    if not detected_type:
+        content_type = file.content_type or ""
+        if content_type in ALLOWED_TYPES:
+            detected_type = content_type
+            for ext, mime in EXTENSION_TO_TYPE.items():
+                if mime == content_type:
+                    detected_ext = ext
+                    break
+        else:
+            detected_ext = ".pdf"
+            detected_type = "application/pdf"
+
+    unique_filename = f"{uuid.uuid4().hex}{detected_ext}"
     save_dir = os.path.join(settings.UPLOAD_DIR, subfolder)
     os.makedirs(save_dir, exist_ok=True)
-
     file_path = os.path.join(save_dir, unique_filename)
 
     async with aiofiles.open(file_path, "wb") as f:
         await f.write(content)
 
-    logger.info(f"File saved: {file_path} ({file_size} bytes)")
-    return file_path
-
-
-def delete_file(file_path: str) -> bool:
-    """Delete a file from disk. Returns True if deleted, False if not found."""
-    try:
-        if os.path.exists(file_path):
-            os.remove(file_path)
-            logger.info(f"File deleted: {file_path}")
-            return True
-        return False
-    except Exception as e:
-        logger.error(f"Error deleting file {file_path}: {e}")
-        return False
+    logger.info(f"Saved: {file_path} ({file_size} bytes) type={detected_type}")
+    return file_path, detected_type

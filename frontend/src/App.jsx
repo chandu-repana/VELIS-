@@ -6,19 +6,16 @@ import ResumeUpload from './pages/ResumeUpload'
 import Interview from './pages/Interview'
 import Results from './pages/Results'
 import Login from './pages/Login'
+import GitHubCallback from './pages/GitHubCallback'
 import Navbar from './components/shared/Navbar'
 
 function ProtectedRoute({ children }) {
-  if (!authService.isLoggedIn()) {
-    return <Navigate to="/login" replace />
-  }
+  if (!authService.isLoggedIn()) return <Navigate to="/login" replace />
   return children
 }
 
 function PublicRoute({ children }) {
-  if (authService.isLoggedIn()) {
-    return <Navigate to="/dashboard" replace />
-  }
+  if (authService.isLoggedIn()) return <Navigate to="/dashboard" replace />
   return children
 }
 
@@ -27,9 +24,8 @@ export default function App() {
     <BrowserRouter>
       <Toaster position="top-right" />
       <Routes>
-        <Route path="/login" element={
-          <PublicRoute><Login /></PublicRoute>
-        } />
+        <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
+        <Route path="/auth/callback" element={<GitHubCallback />} />
         <Route path="/*" element={
           <ProtectedRoute>
             <div className="min-h-screen bg-gray-50">

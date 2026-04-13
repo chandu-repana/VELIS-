@@ -3,21 +3,38 @@ import { useNavigate } from 'react-router-dom'
 import { resumeAPI, interviewAPI } from '../services/api'
 import toast from 'react-hot-toast'
 
+const ALLOWED_EXTENSIONS = ['.pdf', '.docx', '.doc', '.txt', '.rtf', '.odt']
+const ALLOWED_TYPES = [
+  'application/pdf',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/msword',
+  'text/plain',
+  'application/rtf',
+  'application/vnd.oasis.opendocument.text',
+  'application/octet-stream',
+  ''
+]
+
 export default function ResumeUpload() {
   const navigate = useNavigate()
   const [step, setStep] = useState(1)
   const [file, setFile] = useState(null)
   const [resume, setResume] = useState(null)
-  const [jobRole, setJobRole] = useState('Software Developer')
+  const [jobRole, setJobRole] = useState('')
   const [numQuestions, setNumQuestions] = useState(10)
   const [loading, setLoading] = useState(false)
   const [dragOver, setDragOver] = useState(false)
 
+  const isValidFile = (f) => {
+    if (!f) return false
+    const name = f.name.toLowerCase()
+    return ALLOWED_EXTENSIONS.some(ext => name.endsWith(ext))
+  }
+
   const handleFile = (f) => {
     if (!f) return
-    const allowed = ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document']
-    if (!allowed.includes(f.type)) {
-      toast.error('Only PDF and DOCX files are allowed')
+    if (!isValidFile(f)) {
+      toast.error('Allowed formats: PDF, DOCX, DOC, TXT, RTF, ODT')
       return
     }
     setFile(f)
@@ -27,12 +44,23 @@ export default function ResumeUpload() {
     if (!file) return toast.error('Please select a file')
     setLoading(true)
     try {
-      const uploadRes = await resumeAPI.upload(file, 1)
+      const uploadRes = await resumeAPI.upload(file)
       const resumeId = uploadRes.data.id
       toast.success('Resume uploaded!')
       const parseRes = await resumeAPI.parse(resumeId)
-      setResume(parseRes.data)
-      toast.success('Extracted ' + parseRes.data.extracted_skills.length + ' skills!')
+      const parsedResume = parseRes.data
+      setResume(parsedResume)
+      if (parsedResume.suggested_role) {
+        setJobRole(parsedResume.suggested_role)
+        toast.success('Detected role: ' + parsedResume.suggested_role)
+      } else {
+        setJobRole('Software Developer')
+      }
+      if (parsedResume.extracted_skills.length === 0) {
+        toast.error('No skills detected. Try a different resume format.')
+      } else {
+        toast.success('Extracted ' + parsedResume.extracted_skills.length + ' skills!')
+      }
       setStep(2)
     } catch (err) {
       toast.error(err.message)
@@ -42,6 +70,7 @@ export default function ResumeUpload() {
   }
 
   const handleStartInterview = async () => {
+    if (!jobRole.trim()) return toast.error('Please enter a job role')
     setLoading(true)
     try {
       const res = await interviewAPI.create({
@@ -68,7 +97,7 @@ export default function ResumeUpload() {
         <p className="text-gray-500 mt-1">Upload your resume to get started</p>
       </div>
 
-      <div className="flex items-center gap-4 mb-8">
+      <div className="flex items-center gap-2 mb-8">
         {[1, 2].map((s) => (
           <div key={s} className="flex items-center gap-2">
             <div className={"w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold " + (step >= s ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-500')}>
@@ -100,13 +129,25 @@ export default function ResumeUpload() {
             ) : (
               <div>
                 <p className="font-medium text-gray-700">Drop your resume here</p>
-                <p className="text-sm text-gray-400 mt-1">PDF or DOCX, up to 10MB</p>
+                <p className="text-sm text-gray-400 mt-2">Supported: PDF, DOCX, DOC, TXT, RTF, ODT</p>
+                <p className="text-xs text-gray-400 mt-1">Up to 10MB</p>
               </div>
             )}
-            <input id="fileInput" type="file" accept=".pdf,.docx" className="hidden" onChange={(e) => handleFile(e.target.files[0])} />
+            <input
+              id="fileInput"
+              type="file"
+              accept=".pdf,.docx,.doc,.txt,.rtf,.odt"
+              className="hidden"
+              onChange={(e) => handleFile(e.target.files[0])}
+            />
           </div>
-          <button onClick={handleUpload} disabled={!file || loading} className="w-full bg-blue-600 text-white py-3 rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
-            {loading ? 'Processing...' : 'Upload and Extract Skills'}
+
+          <button
+            onClick={handleUpload}
+            disabled={!file || loading}
+            className="w-full bg-blue-600 text-white py-3 rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {loading ? 'Uploading and analyzing...' : 'Upload and Extract Skills'}
           </button>
         </div>
       )}
@@ -114,30 +155,58 @@ export default function ResumeUpload() {
       {step === 2 && resume && (
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-8 space-y-6">
           <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-            <p className="font-medium text-green-800">Resume parsed successfully</p>
-            <p className="text-sm text-green-600 mt-1">{resume.extracted_skills.length} skills extracted</p>
+            <p className="font-medium text-green-800">Resume analyzed successfully</p>
+            <p className="text-sm text-green-600 mt-1">
+              {resume.extracted_skills.length} skills extracted
+              {resume.experience_years > 0 ? ' • ' + resume.experience_years + ' years experience' : ''}
+            </p>
           </div>
+
+          {resume.suggested_role && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-center gap-2">
+              <span className="text-blue-600">🎯</span>
+              <p className="text-sm text-blue-800">Detected role: <strong>{resume.suggested_role}</strong></p>
+            </div>
+          )}
+
           <div>
-            <p className="text-sm font-medium text-gray-700 mb-2">Extracted Skills</p>
-            <div className="flex flex-wrap gap-2">
+            <p className="text-sm font-medium text-gray-700 mb-2">Extracted Skills ({resume.extracted_skills.length})</p>
+            <div className="flex flex-wrap gap-2 max-h-40 overflow-y-auto">
               {resume.extracted_skills.length > 0 ? resume.extracted_skills.map((skill) => (
                 <span key={skill} className="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-sm font-medium">{skill}</span>
-              )) : <p className="text-gray-400 text-sm">No skills detected</p>}
+              )) : (
+                <p className="text-gray-400 text-sm">No skills detected — interview will use general questions</p>
+              )}
             </div>
           </div>
+
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Job Role</label>
-              <input value={jobRole} onChange={(e) => setJobRole(e.target.value)} className="w-full border border-gray-200 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <input
+                value={jobRole}
+                onChange={(e) => setJobRole(e.target.value)}
+                placeholder="e.g. Python Developer"
+                className="w-full border border-gray-200 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Number of Questions</label>
-              <select value={numQuestions} onChange={(e) => setNumQuestions(Number(e.target.value))} className="w-full border border-gray-200 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
-                {[5, 8, 10, 15].map(n => <option key={n} value={n}>{n} questions</option>)}
+              <select
+                value={numQuestions}
+                onChange={(e) => setNumQuestions(Number(e.target.value))}
+                className="w-full border border-gray-200 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                {[5, 8, 10, 15, 20, 25].map(n => <option key={n} value={n}>{n} questions</option>)}
               </select>
             </div>
           </div>
-          <button onClick={handleStartInterview} disabled={loading} className="w-full bg-blue-600 text-white py-3 rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors">
+
+          <button
+            onClick={handleStartInterview}
+            disabled={loading}
+            className="w-full bg-blue-600 text-white py-3 rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors"
+          >
             {loading ? 'Creating Interview...' : 'Start Interview'}
           </button>
         </div>

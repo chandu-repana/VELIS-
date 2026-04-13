@@ -10,7 +10,6 @@ from typing import List
 import logging
 
 logger = logging.getLogger(__name__)
-
 router = APIRouter()
 
 
@@ -20,16 +19,12 @@ async def analytics_status():
 
 
 @router.post("/evaluate/{response_id}")
-async def evaluate_single_response(
-    response_id: int,
-    db: Session = Depends(get_db)
-):
+async def evaluate_single_response(response_id: int, db: Session = Depends(get_db)):
     response = db.query(Response).filter(Response.id == response_id).first()
     if not response:
         raise HTTPException(status_code=404, detail="Response not found")
-
     if not response.transcribed_text:
-        raise HTTPException(status_code=400, detail="Response has no transcribed text to evaluate")
+        raise HTTPException(status_code=400, detail="Response has no transcribed text")
 
     question = db.query(Question).filter(Question.id == response.question_id).first()
     if not question:
@@ -42,18 +37,13 @@ async def evaluate_single_response(
             question_type=question.question_type.value,
             skill_tag=question.skill_tag
         )
-
         response.score = result["score"]
         response.feedback = result["feedback"]
         response.strengths = result["strengths"]
         response.improvements = result["improvements"]
         response.is_evaluated = True
-
         db.commit()
         db.refresh(response)
-
-        logger.info(f"Response {response_id} evaluated: score={result['score']}")
-
         return {
             "response_id": response_id,
             "score": result["score"],
@@ -61,7 +51,6 @@ async def evaluate_single_response(
             "strengths": result["strengths"],
             "improvements": result["improvements"]
         }
-
     except Exception as e:
         logger.error(f"Evaluation failed: {e}")
         db.rollback()
@@ -69,46 +58,36 @@ async def evaluate_single_response(
 
 
 @router.post("/evaluate-interview/{interview_id}")
-async def evaluate_all_responses(
-    interview_id: int,
-    db: Session = Depends(get_db)
-):
+async def evaluate_all_responses(interview_id: int, db: Session = Depends(get_db)):
     interview = db.query(Interview).filter(Interview.id == interview_id).first()
     if not interview:
         raise HTTPException(status_code=404, detail="Interview not found")
 
-    responses = db.query(Response).filter(
-        Response.interview_id == interview_id
-    ).all()
-
+    responses = db.query(Response).filter(Response.interview_id == interview_id).all()
     if not responses:
-        raise HTTPException(status_code=404, detail="No responses found for this interview")
+        raise HTTPException(status_code=404, detail="No responses found")
 
     evaluated = []
     scores = []
     question_types = []
 
     for response in responses:
-        if not response.transcribed_text:
+        if not response.transcribed_text or len(response.transcribed_text.strip()) < 5:
             continue
-
         question = db.query(Question).filter(Question.id == response.question_id).first()
         if not question:
             continue
-
         result = evaluate_response(
             question_text=question.text,
             answer_text=response.transcribed_text,
             question_type=question.question_type.value,
             skill_tag=question.skill_tag
         )
-
         response.score = result["score"]
         response.feedback = result["feedback"]
         response.strengths = result["strengths"]
         response.improvements = result["improvements"]
         response.is_evaluated = True
-
         scores.append(result["score"])
         question_types.append(question.question_type.value)
         evaluated.append({
@@ -119,18 +98,16 @@ async def evaluate_all_responses(
         })
 
     if scores:
-        overall = sum(scores) / len(scores)
-        interview.overall_score = round(overall, 1)
+        interview.overall_score = round(sum(scores) / len(scores), 1)
 
     db.commit()
 
     overall_feedback = generate_overall_feedback(
         scores=scores,
         question_types=question_types,
-        job_role=interview.job_role or "Software Developer"
+        job_role=interview.job_role or "Software Developer",
+        individual_results=evaluated
     )
-
-    logger.info(f"Interview {interview_id} evaluated: {len(evaluated)} responses, score={overall_feedback['overall_score']}")
 
     return {
         "interview_id": interview_id,
@@ -141,10 +118,7 @@ async def evaluate_all_responses(
 
 
 @router.get("/interview/{interview_id}/report")
-async def get_interview_report(
-    interview_id: int,
-    db: Session = Depends(get_db)
-):
+async def get_interview_report(interview_id: int, db: Session = Depends(get_db)):
     interview = db.query(Interview).filter(Interview.id == interview_id).first()
     if not interview:
         raise HTTPException(status_code=404, detail="Interview not found")
@@ -154,10 +128,7 @@ async def get_interview_report(
         Response.is_evaluated == True
     ).all()
 
-    questions = db.query(Question).filter(
-        Question.interview_id == interview_id
-    ).all()
-
+    questions = db.query(Question).filter(Question.interview_id == interview_id).all()
     question_map = {q.id: q for q in questions}
 
     report_items = []
@@ -170,15 +141,18 @@ async def get_interview_report(
             "answer": r.transcribed_text,
             "score": r.score,
             "feedback": r.feedback,
-            "strengths": r.strengths,
-            "improvements": r.improvements
+            "strengths": r.strengths or [],
+            "improvements": r.improvements or []
         })
 
     scores = [r.score for r in responses if r.score is not None]
+    question_types = [item["question_type"] for item in report_items]
+
     overall_feedback = generate_overall_feedback(
         scores=scores,
-        question_types=[r["question_type"] for r in report_items],
-        job_role=interview.job_role or "Software Developer"
+        question_types=question_types,
+        job_role=interview.job_role or "Software Developer",
+        individual_results=report_items
     )
 
     return {
@@ -194,10 +168,7 @@ async def get_interview_report(
 
 
 @router.get("/dashboard/{user_id}")
-async def get_user_dashboard(
-    user_id: int,
-    db: Session = Depends(get_db)
-):
+async def get_user_dashboard(user_id: int, db: Session = Depends(get_db)):
     interviews = db.query(Interview).filter(
         Interview.user_id == user_id
     ).order_by(Interview.created_at.desc()).all()
@@ -207,11 +178,11 @@ async def get_user_dashboard(
             "total_interviews": 0,
             "average_score": 0,
             "best_score": 0,
+            "completed_interviews": 0,
             "interviews": []
         }
 
     scores = [i.overall_score for i in interviews if i.overall_score is not None]
-
     interview_list = []
     for interview in interviews:
         interview_list.append({

@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.models.interview import Interview, InterviewStatus
 from app.models.question import Question, QuestionType, DifficultyLevel
+from app.models.response import Response
 from app.models.resume import Resume
 from app.schemas.interview import InterviewCreate, InterviewOut, InterviewStartResponse
 from app.schemas.question import QuestionOut
@@ -32,16 +33,10 @@ async def create_interview(
     ).first()
 
     if not resume:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Resume not found"
-        )
+        raise HTTPException(status_code=404, detail="Resume not found")
 
     if not resume.is_parsed:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Resume must be parsed before creating an interview. Call /resume/parse first."
-        )
+        raise HTTPException(status_code=400, detail="Resume must be parsed before creating an interview.")
 
     try:
         interview = Interview(
@@ -75,79 +70,79 @@ async def create_interview(
             db.add(question)
 
         db.commit()
-
-        logger.info(f"Interview created: id={interview.id} questions={len(raw_questions)}")
+        logger.info(f"Interview created: id={interview.id}")
 
         return InterviewStartResponse(
             interview_id=interview.id,
             title=interview.title,
             job_role=interview.job_role,
             total_questions=len(raw_questions),
-            message=f"Interview created with {len(raw_questions)} questions. Call /start to begin."
+            message=f"Interview created with {len(raw_questions)} questions."
         )
 
     except Exception as e:
         logger.error(f"Interview creation failed: {e}")
         db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Interview creation failed: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Interview creation failed: {str(e)}")
 
 
 @router.post("/start/{interview_id}")
-async def start_interview(
-    interview_id: int,
-    db: Session = Depends(get_db)
-):
+async def start_interview(interview_id: int, db: Session = Depends(get_db)):
     interview = db.query(Interview).filter(Interview.id == interview_id).first()
     if not interview:
         raise HTTPException(status_code=404, detail="Interview not found")
-
     interview.status = InterviewStatus.IN_PROGRESS
     db.commit()
-
     return {"message": "Interview started", "interview_id": interview_id, "status": "in_progress"}
 
 
-@router.get("/{interview_id}/questions", response_model=List[QuestionOut])
-async def get_interview_questions(
+@router.delete("/{interview_id}")
+async def delete_interview(
     interview_id: int,
+    user_id: int = 1,
     db: Session = Depends(get_db)
 ):
-    interview = db.query(Interview).filter(Interview.id == interview_id).first()
+    interview = db.query(Interview).filter(
+        Interview.id == interview_id,
+        Interview.user_id == user_id
+    ).first()
+
     if not interview:
         raise HTTPException(status_code=404, detail="Interview not found")
 
+    db.query(Response).filter(Response.interview_id == interview_id).delete()
+    db.query(Question).filter(Question.interview_id == interview_id).delete()
+    db.delete(interview)
+    db.commit()
+
+    logger.info(f"Interview {interview_id} deleted by user {user_id}")
+    return {"message": "Interview deleted successfully", "interview_id": interview_id}
+
+
+@router.get("/{interview_id}/questions", response_model=List[QuestionOut])
+async def get_interview_questions(interview_id: int, db: Session = Depends(get_db)):
+    interview = db.query(Interview).filter(Interview.id == interview_id).first()
+    if not interview:
+        raise HTTPException(status_code=404, detail="Interview not found")
     questions = db.query(Question).filter(
         Question.interview_id == interview_id
     ).order_by(Question.order_index).all()
-
     return questions
 
 
 @router.get("/{interview_id}/question/{question_index}", response_model=QuestionOut)
-async def get_question_by_index(
-    interview_id: int,
-    question_index: int,
-    db: Session = Depends(get_db)
-):
+async def get_question_by_index(interview_id: int, question_index: int, db: Session = Depends(get_db)):
     question = db.query(Question).filter(
         Question.interview_id == interview_id,
         Question.order_index == question_index
     ).first()
-
     if not question:
         raise HTTPException(status_code=404, detail="Question not found")
-
     return question
 
 
 @router.get("/list", response_model=List[InterviewOut])
-async def list_interviews(
-    user_id: int = 1,
-    db: Session = Depends(get_db)
-):
+async def list_interviews(user_id: int = 1, db: Session = Depends(get_db)):
     interviews = db.query(Interview).filter(
         Interview.user_id == user_id
     ).order_by(Interview.created_at.desc()).all()
@@ -155,10 +150,7 @@ async def list_interviews(
 
 
 @router.get("/{interview_id}", response_model=InterviewOut)
-async def get_interview(
-    interview_id: int,
-    db: Session = Depends(get_db)
-):
+async def get_interview(interview_id: int, db: Session = Depends(get_db)):
     interview = db.query(Interview).filter(Interview.id == interview_id).first()
     if not interview:
         raise HTTPException(status_code=404, detail="Interview not found")

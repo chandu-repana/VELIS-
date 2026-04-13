@@ -51,13 +51,14 @@ export const interviewAPI = {
   getQuestion: (interviewId, index) => api.get('/interview/' + interviewId + '/question/' + index),
   list: () => api.get('/interview/list?user_id=' + getUserId()),
   get: (interviewId) => api.get('/interview/' + interviewId),
+  delete: (interviewId) => api.delete('/interview/' + interviewId + '?user_id=' + getUserId()),
 }
 
 export const voiceAPI = {
   getTTS: (questionId) => API_BASE + '/voice/tts/' + questionId,
   submitSTT: (questionId, interviewId, audioBlob) => {
     const formData = new FormData()
-    formData.append('file', audioBlob, 'response.wav')
+    formData.append('file', audioBlob, 'response.webm')
     return api.post('/voice/stt/' + questionId + '/' + interviewId, formData, {
       headers: { 'Content-Type': 'multipart/form-data' }
     })

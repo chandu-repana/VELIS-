@@ -18,6 +18,7 @@ class ResumeParseResponse(BaseModel):
     experience_years: int
     education: List[Dict[str, str]]
     is_parsed: bool
+    suggested_role: Optional[str] = None
 
 
 class ResumeOut(BaseModel):

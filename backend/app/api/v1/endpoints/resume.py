@@ -10,7 +10,6 @@ from typing import List
 import logging
 
 logger = logging.getLogger(__name__)
-
 router = APIRouter()
 
 
@@ -25,43 +24,31 @@ async def upload_resume(
     user_id: int = 1,
     db: Session = Depends(get_db)
 ):
-    """
-    Upload a resume file (PDF or DOCX).
-    Saves the file and creates a database record.
-    """
     try:
-        file_path = await save_upload_file(file, subfolder="resumes")
-
+        file_path, detected_type = await save_upload_file(file, subfolder="resumes")
         resume = Resume(
             user_id=user_id,
             filename=file.filename,
             file_path=file_path,
-            file_type=file.content_type,
+            file_type=detected_type,
             is_parsed=False
         )
         db.add(resume)
         db.commit()
         db.refresh(resume)
-
-        logger.info(f"Resume uploaded: id={resume.id} user={user_id}")
-
         return ResumeUploadResponse(
             id=resume.id,
             filename=resume.filename,
             file_type=resume.file_type,
             is_parsed=resume.is_parsed,
-            message="Resume uploaded successfully. Call /parse to extract skills."
+            message="Resume uploaded successfully."
         )
-
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Resume upload failed: {e}")
         db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Resume upload failed"
-        )
+        raise HTTPException(status_code=500, detail=f"Resume upload failed: {str(e)}")
 
 
 @router.post("/parse/{resume_id}", response_model=ResumeParseResponse)
@@ -69,74 +56,46 @@ async def parse_resume_endpoint(
     resume_id: int,
     db: Session = Depends(get_db)
 ):
-    """
-    Parse an uploaded resume to extract skills, experience, and education.
-    """
     resume = db.query(Resume).filter(Resume.id == resume_id).first()
     if not resume:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Resume not found"
-        )
-
+        raise HTTPException(status_code=404, detail="Resume not found")
     try:
         raw_text = parse_resume(resume.file_path, resume.file_type)
+        if not raw_text or len(raw_text.strip()) < 20:
+            raise HTTPException(status_code=400, detail="Could not extract text. Make sure the document contains readable text.")
         extracted = extract_all(raw_text)
-
         resume.raw_text = raw_text
         resume.extracted_skills = extracted["skills"]
         resume.experience_years = extracted["experience_years"]
         resume.education = extracted["education"]
         resume.is_parsed = True
-
         db.commit()
         db.refresh(resume)
-
-        logger.info(f"Resume parsed: id={resume_id} skills={len(extracted['skills'])}")
-
         return ResumeParseResponse(
             id=resume.id,
             filename=resume.filename,
             extracted_skills=resume.extracted_skills,
             experience_years=resume.experience_years,
             education=resume.education,
-            is_parsed=resume.is_parsed
+            is_parsed=resume.is_parsed,
+            suggested_role=extracted.get("suggested_role")
         )
-
-    except FileNotFoundError:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Resume file not found on disk"
-        )
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Resume parse failed: {e}")
+        logger.error(f"Resume parse failed: {e}", exc_info=True)
         db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Resume parsing failed: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Parsing failed: {str(e)}")
 
 
 @router.get("/list", response_model=List[ResumeOut])
-async def list_resumes(
-    user_id: int = 1,
-    db: Session = Depends(get_db)
-):
-    """Get all resumes for a user."""
-    resumes = db.query(Resume).filter(Resume.user_id == user_id).all()
-    return resumes
+async def list_resumes(user_id: int = 1, db: Session = Depends(get_db)):
+    return db.query(Resume).filter(Resume.user_id == user_id).all()
 
 
 @router.get("/{resume_id}", response_model=ResumeOut)
-async def get_resume(
-    resume_id: int,
-    db: Session = Depends(get_db)
-):
-    """Get a specific resume by ID."""
+async def get_resume(resume_id: int, db: Session = Depends(get_db)):
     resume = db.query(Resume).filter(Resume.id == resume_id).first()
     if not resume:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Resume not found"
-        )
+        raise HTTPException(status_code=404, detail="Resume not found")
     return resume
